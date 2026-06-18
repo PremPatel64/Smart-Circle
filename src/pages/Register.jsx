@@ -1,0 +1,161 @@
+import React, { useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
+import { Mail, Lock, User, Eye, EyeOff, Loader2 } from 'lucide-react';
+import toast from 'react-hot-toast';
+
+const Register = () => {
+  const { register } = useAuth();
+  const navigate = useNavigate();
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!name || !email || !password || !confirmPassword) {
+      return toast.error('Please fill in all fields');
+    }
+
+    if (password.length < 6) {
+      return toast.error('Password must be at least 6 characters');
+    }
+
+    if (password !== confirmPassword) {
+      return toast.error('Passwords do not match');
+    }
+
+    setIsSubmitting(true);
+    try {
+      const data = await register(name, email, password);
+      if (data.success) {
+        toast.success(`Welcome to SmartSplit, ${name}!`);
+        navigate('/');
+      }
+    } catch (error) {
+      console.error(error);
+      const msg = error.response?.data?.message || 'Registration failed. Please try again.';
+      toast.error(msg);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-5">
+      <div className="flex flex-col gap-1.5">
+        <h2 className="text-xl font-bold text-white text-center">Create Account</h2>
+        <p className="text-xs text-slate-400 text-center">Get started with SmartSplit for free</p>
+      </div>
+
+      <form onSubmit={handleSubmit} className="flex flex-col gap-3.5">
+        {/* Name */}
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-semibold text-slate-300">Full Name</label>
+          <div className="relative">
+            <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500">
+              <User className="w-4 h-4" />
+            </span>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="John Doe"
+              className="w-full pl-10 pr-4 py-2 rounded-xl border border-slate-700/50 bg-slate-800/40 text-slate-200 text-sm focus:outline-none focus:border-green-500 focus:ring-2 focus:ring-green-500/20 transition-all"
+              required
+            />
+          </div>
+        </div>
+
+        {/* Email */}
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-semibold text-slate-300">Email Address</label>
+          <div className="relative">
+            <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500">
+              <Mail className="w-4 h-4" />
+            </span>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="you@example.com"
+              className="w-full pl-10 pr-4 py-2 rounded-xl border border-slate-700/50 bg-slate-800/40 text-slate-200 text-sm focus:outline-none focus:border-green-500 focus:ring-2 focus:ring-green-500/20 transition-all"
+              required
+            />
+          </div>
+        </div>
+
+        {/* Password */}
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-semibold text-slate-300">Password</label>
+          <div className="relative">
+            <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500">
+              <Lock className="w-4 h-4" />
+            </span>
+            <input
+              type={showPassword ? 'text' : 'password'}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="••••••••"
+              className="w-full pl-10 pr-10 py-2 rounded-xl border border-slate-700/50 bg-slate-800/40 text-slate-200 text-sm focus:outline-none focus:border-green-500 focus:ring-2 focus:ring-green-500/20 transition-all"
+              required
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword(!showPassword)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300"
+            >
+              {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+            </button>
+          </div>
+        </div>
+
+        {/* Confirm Password */}
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-semibold text-slate-300">Confirm Password</label>
+          <div className="relative">
+            <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500">
+              <Lock className="w-4 h-4" />
+            </span>
+            <input
+              type={showPassword ? 'text' : 'password'}
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              placeholder="••••••••"
+              className="w-full pl-10 pr-4 py-2 rounded-xl border border-slate-700/50 bg-slate-800/40 text-slate-200 text-sm focus:outline-none focus:border-green-500 focus:ring-2 focus:ring-green-500/20 transition-all"
+              required
+            />
+          </div>
+        </div>
+
+        {/* Submit Button */}
+        <button
+          type="submit"
+          disabled={isSubmitting}
+          className="w-full bg-green-500 hover:bg-green-600 disabled:bg-green-500/50 text-white font-bold py-2 rounded-xl shadow-lg shadow-green-500/10 flex items-center justify-center gap-2 transition-all mt-2"
+        >
+          {isSubmitting ? (
+            <>
+              <Loader2 className="w-4 h-4 animate-spin" />
+              <span>Creating Account...</span>
+            </>
+          ) : (
+            <span>Sign Up</span>
+          )}
+        </button>
+      </form>
+
+      <div className="text-center text-xs text-slate-400 mt-1">
+        Already have an account?{' '}
+        <Link to="/login" className="text-green-500 hover:underline font-bold">
+          Sign In
+        </Link>
+      </div>
+    </div>
+  );
+};
+
+export default Register;
