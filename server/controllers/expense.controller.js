@@ -1,6 +1,7 @@
 import Expense from '../models/expense.model.js';
 import Group from '../models/group.model.js';
 import User from '../models/user.model.js';
+import Settlement from '../models/settlement.model.js';
 import { predictCategory } from '../utils/categoryPredictor.js';
 import { createNotification } from '../services/notification.service.js';
 
@@ -101,6 +102,9 @@ export const addExpense = async (req, res, next) => {
       res.statusCode = 404;
       throw new Error('Group not found');
     }
+
+    // Delete any completed optimized settlements in this group since the expense list has changed
+    await Settlement.deleteMany({ groupId, isOptimized: true });
 
     // Predict category if not provided
     const chosenCategory = category || predictCategory(description);
@@ -216,6 +220,9 @@ export const updateExpense = async (req, res, next) => {
     }
 
     const updatedExpense = await expense.save();
+
+    // Delete any completed optimized settlements in this group since the expense list has changed
+    await Settlement.deleteMany({ groupId: expense.groupId, isOptimized: true });
     
     const populated = await Expense.findById(updatedExpense._id)
       .populate('paidBy', 'name email avatar')
@@ -254,6 +261,9 @@ export const deleteExpense = async (req, res, next) => {
     }
 
     await Expense.findByIdAndDelete(req.params.id);
+
+    // Delete any completed optimized settlements in this group since the expense list has changed
+    await Settlement.deleteMany({ groupId: expense.groupId, isOptimized: true });
 
     res.json({
       success: true,

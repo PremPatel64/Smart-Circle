@@ -54,11 +54,22 @@ export const confirmOptimization = async (req, res, next) => {
       throw new Error('No pending debts to optimize in this group.');
     }
 
-    // Mark group as optimized in the database
-    group.isOptimized = true;
-    await group.save();
+    // Remove any previous pending settlements in this group to avoid duplicates
+    await Settlement.deleteMany({ groupId: group._id, status: 'pending' });
 
+    // Create the optimized settlements in the DB as pending immediately
     const createdSettlements = [];
+    for (const tx of optimizedTransactions) {
+      const settlement = await Settlement.create({
+        groupId: group._id,
+        payerId: tx.fromUser._id,
+        receiverId: tx.toUser._id,
+        amount: tx.amount,
+        status: 'pending',
+        isOptimized: true
+      });
+      createdSettlements.push(settlement);
+    }
 
     // Group original and optimized transactions by user
     const originalSent = {};
@@ -314,6 +325,40 @@ export const getGroupSettlements = async (req, res, next) => {
     res.json({
       success: true,
       data: formatted
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Delete a completed or pending settlement
+ * @route   DELETE /api/settlements/:id
+ * @access  Private
+ */
+export const deleteSettlement = async (req, res, next) => {
+  try {
+    const settlement = await Settlement.findById(req.params.id);
+    if (!settlement) {
+      res.statusCode = 404;
+      throw new Error('Settlement record not found');
+    }
+
+    const group = await Group.findById(settlement.groupId);
+    const isGroupCreator = group && group.createdBy.toString() === req.user._id.toString();
+    const isPayer = settlement.payerId.toString() === req.user._id.toString();
+    const isReceiver = settlement.receiverId.toString() === req.user._id.toString();
+
+    if (!isGroupCreator && !isPayer && !isReceiver) {
+      res.statusCode = 403;
+      throw new Error('Not authorized to delete this settlement');
+    }
+
+    await Settlement.findByIdAndDelete(req.params.id);
+
+    res.json({
+      success: true,
+      message: 'Settlement deleted successfully'
     });
   } catch (error) {
     next(error);

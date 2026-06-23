@@ -24,10 +24,6 @@ const groupSchema = new mongoose.Schema({
     type: Date,
     default: Date.now,
   },
-  isOptimized: {
-    type: Boolean,
-    default: false,
-  },
 });
 
 const Group = mongoose.model('Group', groupSchema);

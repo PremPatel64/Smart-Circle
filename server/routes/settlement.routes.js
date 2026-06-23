@@ -4,7 +4,8 @@ import {
   confirmOptimization,
   createSettlement,
   confirmSettlement,
-  getGroupSettlements
+  getGroupSettlements,
+  deleteSettlement
 } from '../controllers/settlement.controller.js';
 import { protect } from '../middleware/auth.js';
 
@@ -18,5 +19,6 @@ router.post('/pay', createSettlement);
 router.post('/', createSettlement);
 router.put('/:id/confirm', confirmSettlement);
 router.get('/group/:groupId', getGroupSettlements);
+router.delete('/:id', deleteSettlement);
 
 export default router;

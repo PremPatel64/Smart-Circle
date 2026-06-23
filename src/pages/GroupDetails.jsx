@@ -42,9 +42,9 @@ const GroupDetails = () => {
   const fetchGroupDetails = useCallback(async () => {
     try {
       const [detailsRes, expensesRes, settlementsRes] = await Promise.all([
-        api.get(`/groups/${id}`),
-        api.get(`/expenses/group/${id}`),
-        api.get(`/settlements/group/${id}`)
+        api.get(`/groups/${id}?t=${Date.now()}`),
+        api.get(`/expenses/group/${id}?t=${Date.now()}`),
+        api.get(`/settlements/group/${id}?t=${Date.now()}`)
       ]);
 
       if (detailsRes.data.success) {
@@ -297,16 +297,19 @@ const GroupDetails = () => {
 
   // Confirm Smart Circle Optimization
   const handleConfirmOptimize = async () => {
+    if (!window.confirm("Are you sure you want to apply Smart Circle optimization? This will simplify and settle all intermediate debts in the group.")) {
+      return;
+    }
     try {
       const { data } = await api.post(`/settlements/optimize/${id}`);
       if (data.success) {
-        toast.success('Smart Circle settlement confirmed and notifications sent!');
+        toast.success('Smart Circle optimization applied successfully!');
         setShowOptimizeModal(false);
         fetchGroupDetails();
       }
     } catch (error) {
       console.error(error);
-      toast.error(error.response?.data?.message || 'Failed to settle debts');
+      toast.error(error.response?.data?.message || 'Failed to apply optimization');
     }
   };
 
@@ -325,6 +328,24 @@ const GroupDetails = () => {
     } catch (error) {
       console.error(error);
       toast.error(error.response?.data?.message || 'Failed to delete expense');
+    }
+  };
+
+  // Delete Settlement
+  const handleDeleteSettlement = async (settleId) => {
+    if (!window.confirm('Are you sure you want to delete this settlement? This will restore outstanding balances.')) {
+      return;
+    }
+
+    try {
+      const { data } = await api.delete(`/settlements/${settleId}`);
+      if (data.success) {
+        toast.success('Settlement deleted successfully!');
+        fetchGroupDetails();
+      }
+    } catch (error) {
+      console.error(error);
+      toast.error(error.response?.data?.message || 'Failed to delete settlement');
     }
   };
 
@@ -451,7 +472,7 @@ const GroupDetails = () => {
 
           <div className="flex justify-end mt-1">
             <button
-              onClick={() => setShowOptimizeModal(true)}
+              onClick={handleConfirmOptimize}
               className="flex items-center gap-2 px-5 py-2.5 text-xs font-bold text-white bg-emerald-500 hover:bg-emerald-600 rounded-xl transition-all shadow-md shadow-emerald-500/10 hover:shadow-emerald-500/25 active:scale-[0.98]"
             >
               <Zap className="w-3.5 h-3.5 fill-current" />
@@ -556,7 +577,7 @@ const GroupDetails = () => {
                   </h3>
                   {optimization?.middleUsers?.includes(user?._id) && optimization?.optimizedTransactions?.length > 0 && (
                     <button
-                      onClick={() => setShowOptimizeModal(true)}
+                      onClick={handleConfirmOptimize}
                       className="flex items-center gap-1.5 text-xs font-bold text-white bg-green-500 hover:bg-green-600 px-3 py-1.5 rounded-lg shadow-sm shadow-green-500/10"
                     >
                       <Zap className="w-3.5 h-3.5" />
@@ -743,6 +764,89 @@ const GroupDetails = () => {
                   </div>
                 </div>
               </div>
+
+              {/* Settlement History Card */}
+              <div className="glass-card p-5 border border-slate-200 dark:border-slate-800/80 flex flex-col gap-4">
+                <div className="border-b border-slate-100 dark:border-slate-800/40 pb-3">
+                  <h3 className="font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2 text-left">
+                    <Clock className="w-5 h-5 text-slate-500" />
+                    <span>Settlement History</span>
+                  </h3>
+                </div>
+
+                <div className="flex flex-col gap-3">
+                  {settlements.length === 0 ? (
+                    <div className="text-center py-4 text-slate-500 dark:text-slate-400 text-xs">
+                      No settlements recorded yet.
+                    </div>
+                  ) : (
+                    <div className="flex flex-col gap-3">
+                      {settlements.map((s) => {
+                        const canDelete = s.fromUser?._id === user?._id || s.toUser?._id === user?._id || group?.createdBy?._id === user?._id;
+                        const isPending = s.status === 'pending';
+                        const isReceiver = s.toUser?._id === user?._id;
+                        
+                        return (
+                          <div
+                            key={s._id}
+                            className="flex justify-between items-center p-3.5 rounded-xl border border-slate-100 dark:border-slate-800/40 bg-white dark:bg-slate-950 hover:bg-slate-50 dark:hover:bg-slate-900/40 transition-all text-left"
+                          >
+                            <div className="flex items-center gap-3">
+                              <div className={`w-8 h-8 rounded-lg ${isPending ? 'bg-amber-500/10 text-amber-500' : 'bg-green-500/10 text-green-500'} flex items-center justify-center font-bold text-xs`}>
+                                {s.isOptimized ? <Zap className="w-4 h-4 fill-current" /> : <Landmark className="w-4 h-4" />}
+                              </div>
+                              <div className="flex flex-col">
+                                <span className="text-xs font-semibold text-slate-800 dark:text-slate-200">
+                                  <span className="font-bold">{s.fromUser?.name || 'User'}</span> {isPending ? 'owes' : 'paid'} <span className="font-bold">{s.toUser?.name || 'User'}</span>
+                                  {isPending && (
+                                    <span className="ml-2 px-1.5 py-0.5 text-[9px] font-bold rounded bg-amber-500/10 text-amber-500 border border-amber-500/20">
+                                      Pending
+                                    </span>
+                                  )}
+                                </span>
+                                <span className="text-[10px] text-slate-400 mt-0.5">
+                                  {new Date(s.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })} &bull; {s.isOptimized ? 'Smart Circle' : 'Manual'}
+                                </span>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-3">
+                              <span className={`text-sm font-black font-bold ${
+                                isPending
+                                  ? (s.fromUser?._id === user?._id ? 'text-red-500' : s.toUser?._id === user?._id ? 'text-green-500' : 'text-amber-500')
+                                  : 'text-green-500'
+                              }`}>
+                                ₹{s.amount}
+                              </span>
+                              {isPending && isReceiver && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleConfirmSettlement(s._id)}
+                                  className="p-1.5 rounded-lg text-amber-500 hover:text-green-500 hover:bg-green-500/10 dark:hover:bg-green-950/20"
+                                  title="Confirm Payment Received"
+                                >
+                                  <CheckCircle className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                              {canDelete && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteSettlement(s._id)}
+                                  className="p-1.5 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-500/10 dark:hover:bg-rose-950/20"
+                                  title="Delete Settlement"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+
             </div>
           )}
 
@@ -941,7 +1045,7 @@ const GroupDetails = () => {
                   tx => tx.fromUser?._id === user?._id && tx.toUser?._id === settleRecipient
                 );
                 const owedTx = optimization?.originalTransactions?.find(
-                  tx => tx.toUser?._id === settleRecipient && tx.fromUser?._id === user?._id
+                  tx => tx.toUser?._id === user?._id && tx.fromUser?._id === settleRecipient
                 );
 
                 const oweAmount = oweTx ? oweTx.amount : 0;

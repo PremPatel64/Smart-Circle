@@ -66,6 +66,54 @@ export const optimizeDebts = async (groupId) => {
     };
   });
 
+  // Fetch and check for pending optimized settlements
+  const pendingOptimized = await Settlement.find({ groupId, status: 'pending', isOptimized: true })
+    .populate('payerId', 'name email avatar')
+    .populate('receiverId', 'name email avatar');
+
+  if (pendingOptimized.length > 0) {
+    const originalTransactions = pendingOptimized.map(s => ({
+      _id: s._id,
+      fromUser: s.payerId,
+      toUser: s.receiverId,
+      amount: s.amount,
+      status: s.status,
+      isOptimized: s.isOptimized,
+      date: s.createdAt
+    }));
+
+    // Calculate net balances based on these pending optimized transactions
+    const netBalances = {};
+    memberIds.forEach(id => {
+      netBalances[id] = 0;
+    });
+
+    originalTransactions.forEach(tx => {
+      const fromId = tx.fromUser?._id?.toString() || tx.fromUser?.toString();
+      const toId = tx.toUser?._id?.toString() || tx.toUser?.toString();
+      if (fromId && netBalances[fromId] !== undefined) {
+        netBalances[fromId] -= tx.amount;
+      }
+      if (toId && netBalances[toId] !== undefined) {
+        netBalances[toId] += tx.amount;
+      }
+    });
+
+    const formattedBalances = Object.entries(netBalances).map(([userId, bal]) => ({
+      user: userMap[userId],
+      balance: Math.round(bal * 100) / 100
+    })).sort((a, b) => b.balance - a.balance);
+
+    return {
+      originalTransactions,
+      optimizedTransactions: [],
+      transactionReductionCount: 0,
+      totalMoneySettled: 0,
+      netBalances: formattedBalances,
+      middleUsers: []
+    };
+  }
+
   // If there are fewer than 2 users, no settlements needed
   if (memberIds.length < 2) {
     return {
@@ -104,6 +152,7 @@ export const optimizeDebts = async (groupId) => {
     let amount = settle.amount;
 
     if (debts[fromId] && debts[toId]) {
+      // 1. Forward direction: reduce debts where fromId owes toId (directly or indirectly)
       while (amount > 0.01) {
         const path = findDebtPath(fromId, toId, debts);
         if (!path || path.length <= 1) {
@@ -135,9 +184,50 @@ export const optimizeDebts = async (groupId) => {
         amount -= reduceAmount;
       }
 
-      // If there's still remaining amount, reduce the direct edge if it exists
+      // Reduce the direct forward edge if it exists
       if (amount > 0.01 && debts[fromId][toId] !== undefined) {
-        debts[fromId][toId] = Math.max(0, debts[fromId][toId] - amount);
+        const reduceAmount = Math.min(amount, debts[fromId][toId]);
+        debts[fromId][toId] = Math.max(0, debts[fromId][toId] - reduceAmount);
+        amount -= reduceAmount;
+      }
+
+      // 2. Reverse direction: reduce debts where toId owes fromId (directly or indirectly)
+      while (amount > 0.01) {
+        const path = findDebtPath(toId, fromId, debts);
+        if (!path || path.length <= 1) {
+          break;
+        }
+
+        // Find the bottleneck capacity in the path
+        let bottleneck = Infinity;
+        for (let i = 0; i < path.length - 1; i++) {
+          const u = path[i];
+          const v = path[i + 1];
+          if (debts[u][v] < bottleneck) {
+            bottleneck = debts[u][v];
+          }
+        }
+
+        if (bottleneck <= 0.01) {
+          break;
+        }
+
+        // Reduce by the minimum of remaining amount and bottleneck
+        const reduceAmount = Math.min(amount, bottleneck);
+        for (let i = 0; i < path.length - 1; i++) {
+          const u = path[i];
+          const v = path[i + 1];
+          debts[u][v] = Math.max(0, debts[u][v] - reduceAmount);
+        }
+
+        amount -= reduceAmount;
+      }
+
+      // Reduce the direct reverse edge if it exists
+      if (amount > 0.01 && debts[toId][fromId] !== undefined) {
+        const reduceAmount = Math.min(amount, debts[toId][fromId]);
+        debts[toId][fromId] = Math.max(0, debts[toId][fromId] - reduceAmount);
+        amount -= reduceAmount;
       }
     }
   });
@@ -274,15 +364,12 @@ export const optimizeDebts = async (groupId) => {
   });
   const middleUsers = memberIds.filter(id => senders.has(id) && receivers.has(id));
 
-  const isOptimized = group ? group.isOptimized : false;
-
   return {
-    originalTransactions: isOptimized ? optimizedTransactions : originalTransactions,
+    originalTransactions,
     optimizedTransactions,
     transactionReductionCount: reduction > 0 ? reduction : 0,
     totalMoneySettled: Math.round(totalMoneySettled * 100) / 100,
     netBalances: formattedBalances,
-    middleUsers: isOptimized ? [] : middleUsers,
-    isOptimized
+    middleUsers
   };
 };
